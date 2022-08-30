@@ -18,6 +18,8 @@
   ---------------------------------------------------------------------
 */
 
+using Microsoft.AspNetCore.Mvc;
+
 namespace Phimath.Secex.Server;
 
 internal static class Endpoints
@@ -72,7 +74,10 @@ internal static class Endpoints
         return Task.FromResult(Results.Ok(files));
     }
 
-    public static async Task<IResult> Upload(HttpRequest request, string id)
+    public static async Task<IResult> Upload(
+        HttpRequest request, 
+        string id,
+        [FromServices] INotificationSender notificationSender)
     {
         var sp = request.HttpContext.RequestServices;
         var lf = sp.GetRequiredService<ILoggerFactory>();
@@ -103,6 +108,11 @@ internal static class Endpoints
                 var extension = Path.GetExtension(file.FileName);
                 var newFileName = $"{filenameWithoutExtensions}-{Path.GetRandomFileName()}{extension}";
                 targetFile = Path.Join(targetDirectory, newFileName);
+                notificationSender.Register(id,newFileName);
+            }
+            else
+            {
+                notificationSender.Register(id,file.FileName);
             }
 
             await using var targetStream = File.Create(targetFile, 4 * 1024 * 1024);
@@ -110,7 +120,8 @@ internal static class Endpoints
             await read.CopyToAsync(targetStream);
         }
 
-        return Results.Ok("ok");
+
+        return Results.Ok();
     }
 
     public static Task<IResult> DownloadDummy(HttpRequest request, string id)

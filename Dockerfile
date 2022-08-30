@@ -29,6 +29,7 @@ COPY ["secex-server.csproj", "./"]
 RUN dotnet restore "secex-server.csproj"
 COPY Program.cs .
 COPY Endpoints.cs .
+COPY Notifications.cs .
 WORKDIR "/src/"
 RUN dotnet build "secex-server.csproj" -c Release -o /app/build
 

@@ -18,7 +18,9 @@
   ---------------------------------------------------------------------
 */
 
+using System.Reflection;
 using Microsoft.AspNetCore.HostFiltering;
+using Microsoft.Extensions.Options;
 using Phimath.Secex.Server;
 
 var browseFilesEnabled = false;
@@ -33,7 +35,43 @@ if (browseFilesFromEnvironment != null)
 }
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Configuration.AddEnvironmentVariables("SECEX_");
+builder.Configuration.AddUserSecrets(Assembly.GetExecutingAssembly(), true);
+builder.Logging.AddFilter("Microsoft.AspNetCore.Http.Result.OkObjectResult", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
+builder.Services.AddOptions<NotificationOptions>()
+    .BindConfiguration("Notifications")
+    .Validate(options => !options.Enabled || !string.IsNullOrEmpty(options.ServerAddress),
+        "Mail Server address must not be empty")
+    .Validate(options => !options.Enabled || options.ServerPort != 0,
+        "Mail Server port must be set")
+    .Validate(options => !options.Enabled || !string.IsNullOrEmpty(options.SenderEmail),
+        "Sender mail must not be empty")
+    .Validate(options => !options.Enabled || !string.IsNullOrEmpty(options.Recipients),
+        "Mail recipients must not be empty")
+    .Validate(options => !options.Enabled || (options.Username == null) == (options.Password == null),
+        "Either both username and password must be NULL (no auth) or both must be set")
+    .ValidateOnStart();
 builder.Services.Configure<HostFilteringOptions>(o => o.AllowedHosts = new List<string> { "*" });
+builder.Services.AddHostedService<NotificationTask>();
+builder.Services.AddSingleton<INotificationSender>(services =>
+{
+    var configuration = services.GetRequiredService<IOptions<NotificationOptions>>().Value;
+    if (!configuration.Enabled)
+    {
+        return new NullNotificationSender();
+    }
+
+    return new SmtpNotificationSender(
+        configuration.ServerAddress!,
+        configuration.ServerPort,
+        configuration.UseSsl,
+        configuration.Username,
+        configuration.Password,
+        configuration.SenderEmail!,
+        configuration.Recipients!.Split(";"),
+        services.GetRequiredService<ILogger<SmtpNotificationSender>>());
+});
 builder.Services.AddResponseCompression();
 builder.Services.AddCors();
 
